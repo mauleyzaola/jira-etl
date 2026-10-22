@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,11 +10,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/mauleyzaola/jira-etl/envs"
 )
-
-type JiraProxy struct{}
-
-func NewJiraProxy() *JiraProxy {}
 
 type changelogPage struct {
 	StartAt    int               `json:"startAt"`
@@ -25,7 +22,7 @@ type changelogPage struct {
 	Values     []json.RawMessage `json:"values"`
 }
 
-type output struct {
+type JiraLog struct {
 	Key       string            `json:"key"`
 	Total     int               `json:"total"`
 	Histories []json.RawMessage `json:"histories"`
@@ -33,41 +30,24 @@ type output struct {
 
 var issueKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
 
-func run() error {
-	if len(os.Args) != 2 {
-		return fmt.Errorf("usage: %s ISSUE-KEY (e.g. DEV-6070)", os.Args[0])
-	}
-	key := strings.ToUpper(os.Args[1])
+func LoadJiraLog(config envs.Config, key string) (*JiraLog, error) {
+	key = strings.ToUpper(key)
 	if !issueKeyPattern.MatchString(key) {
-		return fmt.Errorf("invalid issue key: %q", os.Args[1])
+		return nil, fmt.Errorf("invalid issue key: %q", key)
 	}
-
-	if err := loadDotEnv(".env"); err != nil {
-		return err
-	}
-	baseURL, err := requireEnv("JIRA_BASE_URL")
-	if err != nil {
-		return err
-	}
-	email, err := requireEnv("JIRA_USER_EMAIL")
-	if err != nil {
-		return err
-	}
-	token, err := requireEnv("JIRA_API_TOKEN")
-	if err != nil {
-		return err
-	}
+	baseURL := config.JiraBaseUrl
+	email := config.JiraUserEmail
+	token := config.JiraApiToken
 	baseURL = strings.TrimRight(baseURL, "/")
-
 	client := &http.Client{Timeout: 30 * time.Second}
-	out := output{Key: key, Histories: []json.RawMessage{}}
+	out := JiraLog{Key: key, Histories: []json.RawMessage{}}
 	startAt := 0
 	for {
 		endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/changelog?startAt=%d&maxResults=100",
 			baseURL, url.PathEscape(key), startAt)
 		page, err := fetchPage(client, endpoint, email, token)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		out.Total = page.Total
 		out.Histories = append(out.Histories, page.Values...)
@@ -76,10 +56,12 @@ func run() error {
 			break
 		}
 	}
-
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	if err := enc.Encode(out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func fetchPage(client *http.Client, endpoint, email, token string) (*changelogPage, error) {
@@ -94,7 +76,7 @@ func fetchPage(client *http.Client, endpoint, email, token string) (*changelogPa
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -109,43 +91,4 @@ func fetchPage(client *http.Client, endpoint, email, token string) (*changelogPa
 		return nil, fmt.Errorf("decoding changelog: %w", err)
 	}
 	return &page, nil
-}
-
-// loadDotEnv sets KEY=VALUE pairs from path without overriding variables
-// already present in the environment. A missing file is not an error.
-func loadDotEnv(path string) error {
-	f, err := os.Open(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		name, value, ok := strings.Cut(strings.TrimPrefix(line, "export "), "=")
-		if !ok {
-			continue
-		}
-		name = strings.TrimSpace(name)
-		value = strings.Trim(strings.TrimSpace(value), `"'`)
-		if _, exists := os.LookupEnv(name); !exists {
-			os.Setenv(name, value)
-		}
-	}
-	return scanner.Err()
-}
-
-func requireEnv(name string) (string, error) {
-	value := os.Getenv(name)
-	if value == "" {
-		return "", fmt.Errorf("missing required environment variable: %s", name)
-	}
-	return value, nil
 }
