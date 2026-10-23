@@ -37,7 +37,7 @@ func LoadJiraLog(config envs.Config, key string) (*domains.JiraLog, error) {
 	out := domains.JiraLog{Key: key, Histories: []domains.History{}}
 	startAt := 0
 	for {
-		endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/changelog?startAt=%d&maxResults=100",
+		endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/changelog?startAt=%d&maxResults=200",
 			baseURL, url.PathEscape(key), startAt)
 		page, err := fetchPage(client, endpoint, email, token)
 		if err != nil {
@@ -51,6 +51,39 @@ func LoadJiraLog(config envs.Config, key string) (*domains.JiraLog, error) {
 		}
 	}
 	return &out, nil
+}
+
+func IssueList(config envs.Config, from, to time.Time) ([]byte, error) {
+	baseURL := strings.TrimRight(config.JiraBaseUrl, "/")
+	jql := fmt.Sprintf(`updated >= "%s" AND updated <= "%s" ORDER BY updated ASC`,
+		from.Format("2006-01-02 15:04"),
+		to.Format("2006-01-02 15:04"),
+	)
+	endpoint := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=100",
+		baseURL, url.QueryEscape(jql))
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(config.JiraUserEmail, config.JiraApiToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s failed with HTTP %d: %s", endpoint, resp.StatusCode, body)
+	}
+	return body, nil
 }
 
 func fetchPage(client *http.Client, endpoint, email, token string) (*changelogPage, error) {
