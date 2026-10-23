@@ -7,7 +7,6 @@ import (
 
 	"github.com/mauleyzaola/jira-etl/envs"
 	"github.com/mauleyzaola/jira-etl/formatters/jsons"
-	"github.com/mauleyzaola/jira-etl/formatters/yamls"
 	"github.com/mauleyzaola/jira-etl/internal/proxy"
 	"github.com/mauleyzaola/jira-etl/ports"
 	"github.com/spf13/cobra"
@@ -35,7 +34,7 @@ func init() {
 	_ = cmd.MarkFlagRequired("from")
 	cmd.Flags().StringVar(&toStr, "to", "", "End date format 2006-01-02")
 	_ = cmd.MarkFlagRequired("to")
-	cmd.Flags().StringVar(&format, "format", "", "json|csv|yaml")
+	cmd.Flags().StringVar(&format, "format", "", "json")
 	_ = cmd.MarkFlagRequired("format")
 	rootCmd.AddCommand(cmd)
 }
@@ -56,7 +55,6 @@ func IssueList() error {
 	}
 	allowedFormatters := map[string]ports.Formatter{
 		"json": jsons.NewGenericFormatter(),
-		"yaml": yamls.NewGenericFormatter(),
 	}
 	formatter, ok := allowedFormatters[format]
 	if !ok {

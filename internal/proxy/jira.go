@@ -35,10 +35,10 @@ func JiraResponse(config envs.Config, req *http.Request) (*http.Response, error)
 	return client.Do(req)
 }
 
-func IssueHistory(config envs.Config, key string) (*domains.JiraLog, error) {
+func IssueHistory(w io.Writer, formatter ports.Formatter, config envs.Config, key string) error {
 	key = strings.ToUpper(key)
 	if !issueKeyPattern.MatchString(key) {
-		return nil, fmt.Errorf("invalid issue key: %q", key)
+		return fmt.Errorf("invalid issue key: %q", key)
 	}
 	baseURL := config.JiraBaseUrl
 	baseURL = strings.TrimRight(baseURL, "/")
@@ -49,7 +49,7 @@ func IssueHistory(config envs.Config, key string) (*domains.JiraLog, error) {
 			baseURL, url.PathEscape(key), startAt)
 		page, err := fetchPage(config, endpoint)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		out.Total = page.Total
 		out.Histories = append(out.Histories, page.Values...)
@@ -58,7 +58,7 @@ func IssueHistory(config envs.Config, key string) (*domains.JiraLog, error) {
 			break
 		}
 	}
-	return &out, nil
+	return formatter.Format(w, out)
 }
 
 func IssueList(w io.Writer, formatter ports.Formatter, config envs.Config, project string, from, to time.Time) error {
@@ -77,8 +77,9 @@ func IssueList(w io.Writer, formatter ports.Formatter, config envs.Config, proje
 		from.Format(filterDateFormat),
 		to.Format(filterDateFormat),
 	)
-	endpoint := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=100&fields=key",
-		baseURL, url.QueryEscape(jql))
+	const issueFields = "summary,issuetype,status,priority,assignee,created,updated"
+	endpoint := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=100&fields=%s",
+		baseURL, url.QueryEscape(jql), url.QueryEscape(issueFields))
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err

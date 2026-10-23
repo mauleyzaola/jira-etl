@@ -1,17 +1,19 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/mauleyzaola/jira-etl/envs"
+	"github.com/mauleyzaola/jira-etl/formatters/jsons"
 	"github.com/mauleyzaola/jira-etl/internal/proxy"
+	"github.com/mauleyzaola/jira-etl/ports"
 	"github.com/spf13/cobra"
 )
 
 var issueHistoryCmd = &cobra.Command{
 	Use:   "issue-history",
-	Short: "A brief description of your command",
+	Short: "Returns a list of issue history (log) for a given issue",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return fmt.Errorf("missing issue key")
@@ -26,18 +28,18 @@ var issueHistoryCmd = &cobra.Command{
 
 func init() {
 	cmd := issueHistoryCmd
+	cmd.Flags().StringVar(&format, "format", "", "json")
+	_ = cmd.MarkFlagRequired("format")
 	rootCmd.AddCommand(cmd)
 }
 
 func IssueHistory(config envs.Config, key string) error {
-	out, err := proxy.IssueHistory(config, key)
-	if err != nil {
-		return err
+	allowedFormatters := map[string]ports.Formatter{
+		"json": jsons.NewGenericFormatter(),
 	}
-	data, err := json.Marshal(out)
-	if err != nil {
-		return err
+	formatter, ok := allowedFormatters[format]
+	if !ok {
+		return fmt.Errorf("formatter not supported: %s", format)
 	}
-	fmt.Println(string(data))
-	return nil
+	return proxy.IssueHistory(os.Stdout, formatter, config, key)
 }

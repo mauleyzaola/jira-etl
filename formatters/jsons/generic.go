@@ -11,6 +11,5 @@ func NewGenericFormatter() *GenericFormatter { return &GenericFormatter{} }
 
 func (x GenericFormatter) Format(w io.Writer, data any) error {
 	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
 	return encoder.Encode(data)
 }
