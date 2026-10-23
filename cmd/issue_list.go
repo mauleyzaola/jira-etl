@@ -1,18 +1,22 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/mauleyzaola/jira-etl/envs"
+	"github.com/mauleyzaola/jira-etl/formatters/jsons"
+	"github.com/mauleyzaola/jira-etl/formatters/yamls"
 	"github.com/mauleyzaola/jira-etl/internal/proxy"
+	"github.com/mauleyzaola/jira-etl/ports"
 	"github.com/spf13/cobra"
 )
 
 var (
 	issueListProject string
 	fromStr, toStr   string
+	format           string
 )
 
 var issueListCmd = &cobra.Command{
@@ -31,6 +35,8 @@ func init() {
 	_ = cmd.MarkFlagRequired("from")
 	cmd.Flags().StringVar(&toStr, "to", "", "End date format 2006-01-02")
 	_ = cmd.MarkFlagRequired("to")
+	cmd.Flags().StringVar(&format, "format", "", "json|csv|yaml")
+	_ = cmd.MarkFlagRequired("format")
 	rootCmd.AddCommand(cmd)
 }
 
@@ -48,14 +54,14 @@ func IssueList() error {
 	if err != nil {
 		return err
 	}
-	issues, err := proxy.IssueList(config, issueListProject, from, to)
-	if err != nil {
-		return err
+	allowedFormatters := map[string]ports.Formatter{
+		"json": jsons.NewGenericFormatter(),
+		"yaml": yamls.NewGenericFormatter(),
 	}
-	data, err := json.MarshalIndent(issues, "", "  ")
-	if err != nil {
-		return err
+	formatter, ok := allowedFormatters[format]
+	if !ok {
+		return fmt.Errorf("formatter not supported: %s", format)
 	}
-	fmt.Println(string(data))
-	return nil
+	w := os.Stdout
+	return proxy.IssueList(w, formatter, config, issueListProject, from, to)
 }

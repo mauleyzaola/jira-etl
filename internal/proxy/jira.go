@@ -12,6 +12,7 @@ import (
 
 	"github.com/mauleyzaola/jira-etl/domains"
 	"github.com/mauleyzaola/jira-etl/envs"
+	"github.com/mauleyzaola/jira-etl/ports"
 )
 
 type changelogPage struct {
@@ -60,7 +61,7 @@ func IssueHistory(config envs.Config, key string) (*domains.JiraLog, error) {
 	return &out, nil
 }
 
-func IssueList(config envs.Config, project string, from, to time.Time) ([]domains.Issue, error) {
+func IssueList(w io.Writer, formatter ports.Formatter, config envs.Config, project string, from, to time.Time) error {
 	var (
 		response = struct {
 			Issues []domains.Issue `json:"issues"`
@@ -68,7 +69,7 @@ func IssueList(config envs.Config, project string, from, to time.Time) ([]domain
 	)
 	project = strings.ToUpper(strings.TrimSpace(project))
 	if !projectKeyPattern.MatchString(project) {
-		return nil, fmt.Errorf("invalid project key: %q", project)
+		return fmt.Errorf("invalid project key: %q", project)
 	}
 	baseURL := strings.TrimRight(config.JiraBaseUrl, "/")
 	jql := fmt.Sprintf(`project = %s AND updated >= "%s" AND updated <= "%s" AND status != Cancelled ORDER BY updated ASC`,
@@ -80,25 +81,25 @@ func IssueList(config envs.Config, project string, from, to time.Time) ([]domain
 		baseURL, url.QueryEscape(jql))
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	resp, err := JiraResponse(config, req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GET %s failed with HTTP %d: %s", endpoint, resp.StatusCode, body)
+		return fmt.Errorf("GET %s failed with HTTP %d: %s", endpoint, resp.StatusCode, body)
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, err
+		return err
 	}
-	return response.Issues, nil
+	return formatter.Format(w, response.Issues)
 }
 
 func fetchPage(config envs.Config, endpoint string) (*changelogPage, error) {
