@@ -25,22 +25,28 @@ type changelogPage struct {
 var issueKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
 var projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+$`)
 
-func LoadJiraLog(config envs.Config, key string) (*domains.JiraLog, error) {
+const filterDateFormat = "2006-01-02 15:04"
+
+func JiraResponse(config envs.Config, req *http.Request) (*http.Response, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	req.SetBasicAuth(config.JiraUserEmail, config.JiraApiToken)
+	req.Header.Set("Accept", "application/json")
+	return client.Do(req)
+}
+
+func IssueHistory(config envs.Config, key string) (*domains.JiraLog, error) {
 	key = strings.ToUpper(key)
 	if !issueKeyPattern.MatchString(key) {
 		return nil, fmt.Errorf("invalid issue key: %q", key)
 	}
 	baseURL := config.JiraBaseUrl
-	email := config.JiraUserEmail
-	token := config.JiraApiToken
 	baseURL = strings.TrimRight(baseURL, "/")
-	client := &http.Client{Timeout: 30 * time.Second}
 	out := domains.JiraLog{Key: key, Histories: []domains.History{}}
 	startAt := 0
 	for {
 		endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/changelog?startAt=%d&maxResults=200",
 			baseURL, url.PathEscape(key), startAt)
-		page, err := fetchPage(client, endpoint, email, token)
+		page, err := fetchPage(config, endpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -54,7 +60,12 @@ func LoadJiraLog(config envs.Config, key string) (*domains.JiraLog, error) {
 	return &out, nil
 }
 
-func IssueList(config envs.Config, project string, from, to time.Time) ([]byte, error) {
+func IssueList(config envs.Config, project string, from, to time.Time) ([]domains.Issue, error) {
+	var (
+		response = struct {
+			Issues []domains.Issue `json:"issues"`
+		}{}
+	)
 	project = strings.ToUpper(strings.TrimSpace(project))
 	if !projectKeyPattern.MatchString(project) {
 		return nil, fmt.Errorf("invalid project key: %q", project)
@@ -62,21 +73,16 @@ func IssueList(config envs.Config, project string, from, to time.Time) ([]byte, 
 	baseURL := strings.TrimRight(config.JiraBaseUrl, "/")
 	jql := fmt.Sprintf(`project = %s AND updated >= "%s" AND updated <= "%s" AND status != Cancelled ORDER BY updated ASC`,
 		project,
-		from.Format("2006-01-02 15:04"),
-		to.Format("2006-01-02 15:04"),
+		from.Format(filterDateFormat),
+		to.Format(filterDateFormat),
 	)
 	endpoint := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=100&fields=key",
 		baseURL, url.QueryEscape(jql))
-
-	client := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(config.JiraUserEmail, config.JiraApiToken)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
+	resp, err := JiraResponse(config, req)
 	if err != nil {
 		return nil, err
 	}
@@ -89,18 +95,18 @@ func IssueList(config envs.Config, project string, from, to time.Time) ([]byte, 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s failed with HTTP %d: %s", endpoint, resp.StatusCode, body)
 	}
-	return body, nil
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, err
+	}
+	return response.Issues, nil
 }
 
-func fetchPage(client *http.Client, endpoint, email, token string) (*changelogPage, error) {
+func fetchPage(config envs.Config, endpoint string) (*changelogPage, error) {
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(email, token)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := client.Do(req)
+	resp, err := JiraResponse(config, req)
 	if err != nil {
 		return nil, err
 	}
