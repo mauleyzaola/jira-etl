@@ -23,6 +23,7 @@ type changelogPage struct {
 }
 
 var issueKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
+var projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+$`)
 
 func LoadJiraLog(config envs.Config, key string) (*domains.JiraLog, error) {
 	key = strings.ToUpper(key)
@@ -53,13 +54,18 @@ func LoadJiraLog(config envs.Config, key string) (*domains.JiraLog, error) {
 	return &out, nil
 }
 
-func IssueList(config envs.Config, from, to time.Time) ([]byte, error) {
+func IssueList(config envs.Config, project string, from, to time.Time) ([]byte, error) {
+	project = strings.ToUpper(strings.TrimSpace(project))
+	if !projectKeyPattern.MatchString(project) {
+		return nil, fmt.Errorf("invalid project key: %q", project)
+	}
 	baseURL := strings.TrimRight(config.JiraBaseUrl, "/")
-	jql := fmt.Sprintf(`updated >= "%s" AND updated <= "%s" ORDER BY updated ASC`,
+	jql := fmt.Sprintf(`project = %s AND updated >= "%s" AND updated <= "%s" AND status != Cancelled ORDER BY updated ASC`,
+		project,
 		from.Format("2006-01-02 15:04"),
 		to.Format("2006-01-02 15:04"),
 	)
-	endpoint := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=100",
+	endpoint := fmt.Sprintf("%s/rest/api/3/search/jql?jql=%s&maxResults=100&fields=key",
 		baseURL, url.QueryEscape(jql))
 
 	client := &http.Client{Timeout: 30 * time.Second}
