@@ -10,17 +10,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mauleyzaola/jira-etl/domains"
-	"github.com/mauleyzaola/jira-etl/envs"
-	"github.com/mauleyzaola/jira-etl/ports"
+	domains2 "github.com/mauleyzaola/jira-etl/internal/domains"
+	"github.com/mauleyzaola/jira-etl/internal/envs"
+	"github.com/mauleyzaola/jira-etl/internal/ports"
 )
 
 type changelogPage struct {
-	StartAt    int               `json:"startAt"`
-	MaxResults int               `json:"maxResults"`
-	Total      int               `json:"total"`
-	IsLast     bool              `json:"isLast"`
-	Values     []domains.History `json:"values"`
+	StartAt    int                `json:"startAt"`
+	MaxResults int                `json:"maxResults"`
+	Total      int                `json:"total"`
+	IsLast     bool               `json:"isLast"`
+	Values     []domains2.History `json:"values"`
 }
 
 var issueKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
@@ -42,7 +42,7 @@ func IssueHistory(w io.Writer, formatter ports.Formatter, config envs.Config, ke
 	}
 	baseURL := config.JiraBaseUrl
 	baseURL = strings.TrimRight(baseURL, "/")
-	out := domains.JiraLog{Key: key, Histories: []domains.History{}}
+	out := domains2.JiraLog{Key: key, Histories: []domains2.History{}}
 	startAt := 0
 	for {
 		endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/changelog?startAt=%d&maxResults=200",
@@ -64,7 +64,7 @@ func IssueHistory(w io.Writer, formatter ports.Formatter, config envs.Config, ke
 func IssueList(w io.Writer, formatter ports.Formatter, config envs.Config, project string, from, to time.Time) error {
 	var (
 		response = struct {
-			Issues []domains.Issue `json:"issues"`
+			Issues []domains2.Issue `json:"issues"`
 		}{}
 	)
 	project = strings.ToUpper(strings.TrimSpace(project))

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mauleyzaola/jira-etl/envs"
-	"github.com/mauleyzaola/jira-etl/formatters/jsons"
+	"github.com/mauleyzaola/jira-etl/internal/envs"
+	"github.com/mauleyzaola/jira-etl/internal/formatters/jsons"
+	"github.com/mauleyzaola/jira-etl/internal/ports"
 	"github.com/mauleyzaola/jira-etl/internal/proxy"
-	"github.com/mauleyzaola/jira-etl/ports"
 	"github.com/spf13/cobra"
 )
 

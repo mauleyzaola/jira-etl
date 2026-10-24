@@ -5,6 +5,8 @@ import (
 )
 
 type Config struct {
+	PostgresConfig
+
 	JiraApiToken  string `env:"JIRA_API_TOKEN,required"`
 	JiraBaseUrl   string `env:"JIRA_BASE_URL,required"`
 	JiraUserEmail string `env:"JIRA_USER_EMAIL,required"`
